@@ -41,6 +41,12 @@ function flipTurn(fen: string): string {
   return parts.join(" ");
 }
 
+// Chaos confidences can be tiny but nonzero; "0%" looks broken.
+function fmtConf(c: number): string {
+  if (c > 0 && c < 0.005) return "<1%";
+  return `${Math.round(c * 100)}%`;
+}
+
 function squareName(file: number, rank: number): Square {
   return (FILES[file] + (rank + 1)) as Square;
 }
@@ -150,9 +156,9 @@ export default function Page() {
             setHistory((h) => [...h, move.san]);
             setFen(c.fen());
             setJevInfo(
-              `Jev played ${move.san} (confidence ${Math.round(
-                (data.confidence ?? 0) * 100
-              )}%)`
+              `Jev played ${move.san} (confidence ${fmtConf(
+                data.confidence ?? 0
+              )})`
             );
             setRoast(null);
           }
