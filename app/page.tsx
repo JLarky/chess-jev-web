@@ -2,6 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Chess, Square } from "chess.js";
+import {
+  playMove,
+  playGameEnd,
+  setSoundMuted,
+  type GameResult,
+} from "./lib/sound";
+import { buildSave, parseSave, restorePosition } from "./lib/save";
 
 type Mode = "strict" | "chaos";
 
@@ -63,6 +70,10 @@ export default function Page() {
   const [thinking, setThinking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [chaosOptions, setChaosOptions] = useState<ChaosOption[] | null>(null);
+  const [muted, setMuted] = useState(false);
+  const [importText, setImportText] = useState("");
+  const [importError, setImportError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const chess = useMemo(() => new Chess(fen), [fen]);
   const turn = chess.turn();
@@ -79,6 +90,18 @@ export default function Page() {
     return null;
   }, [chess]);
 
+  // Fanfare when the game ends. Result is from the human's perspective.
+  useEffect(() => {
+    if (!gameOver) return;
+    let result: GameResult = "draw";
+    if (chess.isCheckmate()) {
+      // Side to move is mated; human wins if the winner is their color.
+      const whiteWon = chess.turn() === "b";
+      result = whiteWon === (humanColor === "w") ? "win" : "loss";
+    }
+    playGameEnd(result);
+  }, [gameOver, chess, humanColor]);
+
   const targets = useMemo(() => {
     if (!selected) return new Map<string, boolean>();
     const m = new Map<string, boolean>();
@@ -88,8 +111,9 @@ export default function Page() {
     return m;
   }, [chess, selected]);
 
-  const newGame = (color: "w" | "b") => {
+  const newGame = (color: "w" | "b", m: Mode = mode) => {
     setHumanColor(color);
+    setMode(m);
     setFen(new Chess().fen());
     setHistory([]);
     setSelected(null);
@@ -99,6 +123,51 @@ export default function Page() {
     setError(null);
     setThinking(false);
     setChaosOptions(null);
+    setImportError(null);
+    setCopied(false);
+  };
+
+  // Load the saved sound preference after mount (localStorage is client-only).
+  useEffect(() => {
+    const m = localStorage.getItem("jev-muted") === "1";
+    setMuted(m);
+    setSoundMuted(m);
+  }, []);
+
+  const toggleMute = () => {
+    const m = !muted;
+    setMuted(m);
+    setSoundMuted(m);
+    try {
+      localStorage.setItem("jev-muted", m ? "1" : "0");
+    } catch {
+      // private mode or similar; sound just won't persist
+    }
+  };
+
+  const copySave = async () => {
+    const text = buildSave(mode, humanColor, history, fen);
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard unavailable: drop the save into the restore box instead.
+      setImportText(text);
+    }
+  };
+
+  const doRestore = () => {
+    setImportError(null);
+    try {
+      const save = parseSave(importText);
+      const { chess: c, sans } = restorePosition(save);
+      newGame(save.human, save.mode);
+      setFen(c.fen());
+      setHistory(sans);
+    } catch (e) {
+      setImportError(e instanceof Error ? e.message : "could not parse save");
+    }
   };
 
   const onSquare = (sq: Square) => {
@@ -107,6 +176,7 @@ export default function Page() {
       try {
         const c = new Chess(fen);
         const move = c.move({ from: selected, to: sq, promotion: "q" });
+        playMove(!!move.captured);
         setHistory((h) => [...h, move.san]);
         setFen(c.fen());
         setSelected(null);
@@ -153,6 +223,7 @@ export default function Page() {
           } else {
             const c = new Chess(fen);
             const move = c.move(data.move.san);
+            playMove(!!move.captured);
             setHistory((h) => [...h, move.san]);
             setFen(c.fen());
             setJevInfo(
@@ -165,11 +236,12 @@ export default function Page() {
         } else {
           const c = new Chess(fen);
           const move = c.move(data.move.san);
+          playMove(!!move.captured);
           setHistory((h) => [...h, move.san]);
           setFen(c.fen());
           setJevInfo(
-            `Jev played ${move.san} (confidence ${Math.round(
-              (data.confidence ?? 0) * 100
+            `Jev played ${move.san} (confidence ${fmtConf(
+              data.confidence ?? 0
             )}%)`
           );
           setRoast(null);
@@ -241,6 +313,14 @@ export default function Page() {
         </div>
         <button className="btn" onClick={() => newGame(humanColor)}>
           New game
+        </button>
+        <button
+          className="btn"
+          onClick={toggleMute}
+          title="Toggle sound effects"
+          aria-pressed={muted}
+        >
+          {muted ? "🔇 Muted" : "🔊 Sound"}
         </button>
       </div>
 
@@ -342,6 +422,32 @@ export default function Page() {
               )}
             </div>
           )}
+          <details className="advanced">
+            <summary>Advanced: save / restore</summary>
+            <p className="adv-desc">
+              Copy the game as plain text, or paste one back to restore it.
+            </p>
+            <button className="btn adv-btn" onClick={copySave}>
+              {copied ? "Copied!" : "Copy game state"}
+            </button>
+            <textarea
+              className="adv-text"
+              rows={5}
+              placeholder={
+                "# paste a saved game here, e.g.\nmode: chaos\nhuman: w\nmoves: e4 e5"
+              }
+              value={importText}
+              onChange={(e) => setImportText(e.target.value)}
+              aria-label="Saved game text to restore"
+              spellCheck={false}
+            />
+            <button className="btn adv-btn" onClick={doRestore}>
+              Restore game
+            </button>
+            {importError && (
+              <div className="error">Restore failed: {importError}</div>
+            )}
+          </details>
         </div>
       </div>
 

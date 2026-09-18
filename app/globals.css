@@ -303,6 +303,45 @@ h1 {
   opacity: 0.45;
 }
 
+.advanced {
+  margin-top: 12px;
+  border-top: 1px solid #2a313c;
+  padding-top: 10px;
+  font-size: 13px;
+}
+
+.advanced summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.advanced summary:hover {
+  color: var(--text);
+}
+
+.adv-desc {
+  color: var(--muted);
+  margin: 6px 0;
+}
+
+.adv-btn {
+  margin: 4px 0;
+}
+
+.adv-text {
+  width: 100%;
+  box-sizing: border-box;
+  background: #0f141b;
+  color: var(--text);
+  border: 1px solid #2a313c;
+  border-radius: 6px;
+  padding: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  margin: 4px 0;
+  resize: vertical;
+}
+
 .note {
   margin-top: 24px;
   color: var(--muted);
