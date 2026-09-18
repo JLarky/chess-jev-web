@@ -5,7 +5,8 @@
 // env var entirely; compute it with: echo -n "pw" | sha256sum
 // A successful login sets an httpOnly cookie holding an HMAC token derived
 // from the stored env value, so the password itself never sits client-side.
-// When JEV_PASSWORD is unset the gate is disabled entirely (local dev).
+// The gate is fail-closed: when JEV_PASSWORD is unset every move request
+// is rejected (JEV_MOCK=1 bypasses the gate for local UI testing).
 
 import { createHash, createHmac, timingSafeEqual } from "crypto";
 
@@ -39,16 +40,12 @@ export function makeAuthToken(stored: string): string {
   return expectedToken(stored);
 }
 
-/** True when the request carries a valid auth cookie, or the gate is off. */
-export function isAuthed(
-  cookieHeader: string | null,
-  password: string | undefined
-): boolean {
-  if (!password) return true;
+/** True when the request carries a valid auth cookie for the stored value. */
+export function isAuthed(cookieHeader: string | null, stored: string): boolean {
   const m = (cookieHeader ?? "").match(/(?:^|;\s*)jev-auth=([^;]+)/);
   const token = m?.[1];
   if (!token) return false;
-  const expected = Buffer.from(expectedToken(password));
+  const expected = Buffer.from(expectedToken(stored));
   const actual = Buffer.from(token);
   return actual.length === expected.length && timingSafeEqual(actual, expected);
 }

@@ -212,7 +212,11 @@ export default function Page() {
           body: JSON.stringify({ fen, mode }),
         });
         const data = await res.json();
-        if (res.status === 401) {
+        if (
+          res.status === 401 &&
+          typeof data.error === "string" &&
+          data.error.startsWith("unauthorized")
+        ) {
           // Password gate: stop and ask the human for the password.
           if (!cancelled) setNeedPassword(true);
           return;

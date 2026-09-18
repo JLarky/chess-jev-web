@@ -2,11 +2,15 @@ import { NextResponse } from "next/server";
 import { JEV_AUTH_COOKIE, makeAuthToken, verifyPassword } from "../../lib/auth";
 
 // POST { password } -> sets the auth cookie when the password matches
-// JEV_PASSWORD (raw or SHA-256 hex digest). When JEV_PASSWORD is unset the
-// gate is disabled and this just answers ok.
+// JEV_PASSWORD (raw or SHA-256 hex digest). Fail closed: when JEV_PASSWORD
+// is unset, login is rejected too.
 export async function POST(req: Request) {
   const password = process.env.JEV_PASSWORD;
-  if (!password) return NextResponse.json({ ok: true, disabled: true });
+  if (!password)
+    return NextResponse.json(
+      { ok: false, error: "Jev is not configured (JEV_PASSWORD is not set)" },
+      { status: 503 }
+    );
   let body: { password?: string } = {};
   try {
     body = await req.json();
