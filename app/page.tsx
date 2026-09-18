@@ -219,8 +219,10 @@ export default function Page() {
               const isTarget = targets.has(sq);
               const isCapture = targets.get(sq) === true;
               return (
-                <div
+                <button
+                  type="button"
                   key={sq}
+                  aria-label={sq}
                   className={
                     "sq" +
                     (isLight ? " light" : " dark") +
@@ -235,7 +237,7 @@ export default function Page() {
                       {GLYPHS[piece.color + piece.type]}
                     </span>
                   )}
-                </div>
+                </button>
               );
             })
           )}
