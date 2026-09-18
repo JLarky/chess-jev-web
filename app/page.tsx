@@ -149,7 +149,7 @@ export default function Page() {
     return () => {
       cancelled = true;
     };
-  }, [fen, mode, humanColor, gameOver, turn, thinking]);
+  }, [fen, mode, humanColor, gameOver, turn]);
 
   const board = chess.board();
   const status = gameOver
