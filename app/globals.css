@@ -233,6 +233,76 @@ h1 {
   font-weight: 600;
 }
 
+.chaos {
+  margin-top: 12px;
+  border-top: 1px solid #2a313c;
+  padding-top: 10px;
+  min-height: 3.2em;
+}
+
+.chaos-title {
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.chaos-empty {
+  font-size: 13px;
+}
+
+.chaos-opt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  padding: 2px 0;
+}
+
+.chaos-rank {
+  color: var(--muted);
+  width: 16px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.chaos-piece {
+  font-size: 17px;
+  line-height: 1;
+  width: 20px;
+  text-align: center;
+}
+
+.chaos-move {
+  flex: 1;
+}
+
+.chaos-conf {
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.chaos-tag {
+  font-size: 11px;
+  border: 1px solid #3a4658;
+  border-radius: 4px;
+  padding: 1px 6px;
+  color: var(--muted);
+}
+
+.chaos-opt.played .chaos-move {
+  color: var(--good);
+  font-weight: 600;
+}
+
+.chaos-opt.played .chaos-tag {
+  color: var(--good);
+  border-color: rgba(143, 227, 136, 0.4);
+}
+
+.chaos-opt.illegal {
+  opacity: 0.45;
+}
+
 .note {
   margin-top: 24px;
   color: var(--muted);

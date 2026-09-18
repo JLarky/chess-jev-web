@@ -5,6 +5,18 @@ import { Chess, Square } from "chess.js";
 
 type Mode = "strict" | "chaos";
 
+interface ChaosOption {
+  pieceLabel: string;
+  pieceType: string;
+  from: string;
+  to: string;
+  san: string | null;
+  uci: string;
+  confidence: number;
+  legal: boolean;
+  played: boolean;
+}
+
 const GLYPHS: Record<string, string> = {
   wk: "♔",
   wq: "♕",
@@ -44,6 +56,7 @@ export default function Page() {
   const [illegalCount, setIllegalCount] = useState(0);
   const [thinking, setThinking] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [chaosOptions, setChaosOptions] = useState<ChaosOption[] | null>(null);
 
   const chess = useMemo(() => new Chess(fen), [fen]);
   const turn = chess.turn();
@@ -79,6 +92,7 @@ export default function Page() {
     setIllegalCount(0);
     setError(null);
     setThinking(false);
+    setChaosOptions(null);
   };
 
   const onSquare = (sq: Square) => {
@@ -120,13 +134,28 @@ export default function Page() {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
         if (cancelled) return;
-        if (data.mode === "chaos" && !data.legal) {
-          setRoast(
-            `Jev tried ${data.attempt.pieceLabel} to ${data.attempt.to}... illegal! Turn forfeited.`
-          );
-          setIllegalCount((c) => c + 1);
-          setJevInfo(null);
-          setFen(flipTurn(fen));
+        if (data.mode === "chaos") {
+          setChaosOptions(data.options ?? null);
+          if (!data.legal) {
+            setRoast(
+              "Jev fumbled all 12 chaotic ideas, every single one illegal! " +
+                "Turn forfeited. Your move."
+            );
+            setIllegalCount((c) => c + 1);
+            setJevInfo(null);
+            setFen(flipTurn(fen));
+          } else {
+            const c = new Chess(fen);
+            const move = c.move(data.move.san);
+            setHistory((h) => [...h, move.san]);
+            setFen(c.fen());
+            setJevInfo(
+              `Jev played ${move.san} (confidence ${Math.round(
+                (data.confidence ?? 0) * 100
+              )}%)`
+            );
+            setRoast(null);
+          }
         } else {
           const c = new Chess(fen);
           const move = c.move(data.move.san);
@@ -198,7 +227,7 @@ export default function Page() {
             <button
               className={mode === "chaos" ? "active" : ""}
               onClick={() => setMode("chaos")}
-              title="Jev picks a piece, then any square. Illegal attempts forfeit the turn."
+              title="Jev shortlists 3 pieces and 4 chaotic squares each, ranks all 12 ideas, and plays the first legal one"
             >
               Chaos
             </button>
@@ -269,14 +298,52 @@ export default function Page() {
               </span>
             ))}
           </div>
+          {mode === "chaos" && (
+            <div className="chaos">
+              <div className="chaos-title">Jev&apos;s chaotic shortlist</div>
+              {chaosOptions ? (
+                chaosOptions.map((o, i) => (
+                  <div
+                    key={i}
+                    className={
+                      "chaos-opt" +
+                      (o.played ? " played" : "") +
+                      (!o.legal ? " illegal" : "")
+                    }
+                  >
+                    <span className="chaos-rank">{i + 1}</span>
+                    <span className="chaos-piece">
+                      {
+                        GLYPHS[
+                          (humanColor === "w" ? "b" : "w") + o.pieceType
+                        ]
+                      }
+                    </span>
+                    <span className="chaos-move">
+                      {o.legal && o.san ? o.san : `${o.from}\u2192${o.to}`}
+                    </span>
+                    <span className="chaos-conf">
+                      {Math.round(o.confidence * 100)}%
+                    </span>
+                    {o.played && <span className="chaos-tag">played</span>}
+                    {!o.legal && <span className="chaos-tag">illegal</span>}
+                  </div>
+                ))
+              ) : (
+                <div className="chaos-empty" aria-hidden="true">
+                  {"\u00a0"}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
       <p className="note">
         Jev is a judgment model, not a chess engine. In legal-only mode it
-        picks from real candidate moves. In chaos mode it picks a piece and
-        then any square, and illegal attempts forfeit its turn. Either way,
-        expect Levy-would-roast-it chess.
+        picks from real candidate moves. In chaos mode Jev shortlists 3 pieces
+        and 4 chaotic destinations each, ranks all 12 ideas, and plays the
+        first legal one. Either way, expect Levy-would-roast-it chess.
       </p>
     </div>
   );
