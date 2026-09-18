@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
-import { JEV_AUTH_COOKIE, makeAuthToken } from "../../lib/auth";
+import { JEV_AUTH_COOKIE, makeAuthToken, verifyPassword } from "../../lib/auth";
 
 // POST { password } -> sets the auth cookie when the password matches
-// JEV_PASSWORD. When JEV_PASSWORD is unset the gate is disabled and this
-// just answers ok.
+// JEV_PASSWORD (raw or SHA-256 hex digest). When JEV_PASSWORD is unset the
+// gate is disabled and this just answers ok.
 export async function POST(req: Request) {
   const password = process.env.JEV_PASSWORD;
   if (!password) return NextResponse.json({ ok: true, disabled: true });
@@ -13,7 +13,7 @@ export async function POST(req: Request) {
   } catch {
     // fall through to the 401 below
   }
-  if (body.password !== password) {
+  if (!verifyPassword(body.password, password)) {
     return NextResponse.json(
       { ok: false, error: "wrong password" },
       { status: 401 }
