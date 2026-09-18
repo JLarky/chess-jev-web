@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { Chess } from "chess.js";
+import { Chess, Square } from "chess.js";
 
 const BASE_URL = process.env.TYPESAFE_BASE_URL ?? "https://api.typesafe.ai";
 const MODEL = "jev-latest";
@@ -63,9 +63,10 @@ export async function POST(req: Request) {
 
     if (mode === "chaos") {
       // Chaos, redesigned: Jev shortlists its top 3 pieces, then its top 4
-      // destination squares for each piece (any square allowed, even illegal),
-      // then ranks all 12 ideas. We play the first legal one. A turn is only
-      // forfeited if every single idea is illegal.
+      // reachable destinations for each piece (a rook gets its rank and
+      // file, a knight its jumps, never its own square), then ranks all
+      // the ideas and plays its favorite. Every candidate is a legal move,
+      // so turns are effectively never forfeited.
       interface PieceInfo {
         square: string;
         type: string;
@@ -97,18 +98,25 @@ export async function POST(req: Request) {
         .slice(0, 3);
       if (topPieces.length === 0) throw new Error("Jev picked no pieces");
 
-      // Top 4 destination squares per piece, asked in parallel.
-      const allSquares: string[] = [];
-      const sqCriteria: Criteria = {};
-      for (const f of "abcdefgh")
-        for (let r = 1; r <= 8; r++) {
-          const sq = `${f}${r}`;
-          allSquares.push(sq);
-          sqCriteria[sq] = sq;
-        }
+      // Top 4 reachable destinations per piece, asked in parallel.
       const squareAnswers = await Promise.all(
-        topPieces.map((p) =>
-          askChoice(
+        topPieces.map(async (p) => {
+          const destMoves = chess.moves({
+            square: p.square as Square,
+            verbose: true,
+          });
+          // One entry per destination square; prefer queen on promotion.
+          const byTo = new Map<string, (typeof destMoves)[number]>();
+          for (const m of destMoves) {
+            const prev = byTo.get(m.to);
+            if (!prev || m.promotion === "q") byTo.set(m.to, m);
+          }
+          const dests = Array.from(byTo.values());
+          if (dests.length === 0) return null;
+          const sqCriteria: Criteria = {};
+          for (const m of dests)
+            sqCriteria[m.to] = `${p.label} to ${m.to}`;
+          const ans = await askChoice(
             sqCriteria,
             {
               fen,
@@ -118,25 +126,31 @@ export async function POST(req: Request) {
               from: p.square,
             },
             `You are playing chess as ${colorName}, and chaos is the plan. ` +
-              `Send the ${p.label} somewhere wild. Any square is allowed, ` +
-              `even an illegal one. Your probability distribution over the ` +
-              `squares is the shortlist: the top 4 destinations will be used. ` +
-              `Be bold.`
-          )
-        )
+              `Send the ${p.label} somewhere wild. These are the squares ` +
+              `it can actually reach. Your probability distribution over ` +
+              `the squares is the shortlist: the top 4 destinations will ` +
+              `be used. Be bold.`
+          );
+          return { ans, dests };
+        })
       );
       interface Candidate {
         pieceLabel: string;
         pieceType: string;
         from: string;
         to: string;
+        san: string;
+        uci: string;
       }
       const candidates: Candidate[] = [];
       topPieces.forEach((p, i) => {
-        const ans = squareAnswers[i];
-        const sp = ans.probabilities ?? { [ans.choice]: ans.confidence ?? 1 };
-        const top = allSquares
-          .map((to) => ({ to, confidence: sp[to] ?? 0 }))
+        const sa = squareAnswers[i];
+        if (!sa) return;
+        const sp = sa.ans.probabilities ?? {
+          [sa.ans.choice]: sa.ans.confidence ?? 1,
+        };
+        const top = sa.dests
+          .map((m) => ({ m, confidence: sp[m.to] ?? 0 }))
           .sort((a, b) => b.confidence - a.confidence)
           .slice(0, 4);
         for (const t of top)
@@ -144,14 +158,36 @@ export async function POST(req: Request) {
             pieceLabel: p.label,
             pieceType: p.type,
             from: p.square,
-            to: t.to,
+            to: t.m.to,
+            san: t.m.san,
+            uci: uciOf(t.m),
           });
       });
+      // Pathological fallback: the shortlisted pieces had no moves at all
+      // (the game would normally already be over). Rank legal moves instead.
+      if (candidates.length === 0) {
+        const seen = new Set<string>();
+        for (const m of chess.moves({ verbose: true })) {
+          const key = m.from + m.to;
+          if (seen.has(key) || (m.promotion && m.promotion !== "q"))
+            continue;
+          seen.add(key);
+          candidates.push({
+            pieceLabel: `${PIECE_NAMES[m.piece] ?? m.piece} on ${m.from}`,
+            pieceType: m.piece,
+            from: m.from,
+            to: m.to,
+            san: m.san,
+            uci: uciOf(m),
+          });
+          if (candidates.length >= 12) break;
+        }
+      }
 
-      // Rank all 12 ideas.
+      // Rank all the ideas.
       const rankCriteria: Criteria = {};
       candidates.forEach((c, i) => {
-        rankCriteria[String(i)] = `${c.pieceLabel} to ${c.to}`;
+        rankCriteria[String(i)] = `${c.san} (${c.pieceLabel} to ${c.to})`;
       });
       const aRank = await askChoice(
         rankCriteria,
@@ -169,35 +205,26 @@ export async function POST(req: Request) {
         `You are playing chess as ${colorName}, judging a chaos contest. ` +
           `The move ideas are in state.candidates. Pick the most deliciously ` +
           `chaotic one: prefer captures, checks, and absurd piece journeys. ` +
-          `Legality is checked separately, so do not worry about whether a ` +
-          `move is legal. Your probability distribution over the ideas is ` +
-          `the final ranking.`
+          `Every idea is a legal move. Your probability distribution over ` +
+          `the ideas is the final ranking.`
       );
       const rankProbs =
         aRank.probabilities ?? { [aRank.choice]: aRank.confidence ?? 1 };
-      const legalMoves = chess.moves({ verbose: true });
       const options = candidates
-        .map((cand, i) => {
-          const legal = legalMoves.filter(
-            (m) => m.from === cand.from && m.to === cand.to
-          );
-          const mv =
-            legal.find((m) => m.promotion === "q") ?? legal[0] ?? null;
-          return {
-            pieceLabel: cand.pieceLabel,
-            pieceType: cand.pieceType,
-            from: cand.from,
-            to: cand.to,
-            san: mv ? mv.san : null,
-            uci: mv ? uciOf(mv) : cand.from + cand.to,
-            confidence: rankProbs[String(i)] ?? 0,
-            legal: !!mv,
-            played: false,
-          };
-        })
+        .map((cand, i) => ({
+          pieceLabel: cand.pieceLabel,
+          pieceType: cand.pieceType,
+          from: cand.from,
+          to: cand.to,
+          san: cand.san,
+          uci: cand.uci,
+          confidence: rankProbs[String(i)] ?? 0,
+          legal: true,
+          played: false,
+        }))
         .sort((a, b) => b.confidence - a.confidence);
 
-      const played = options.find((o) => o.legal) ?? null;
+      const played = options[0] ?? null;
       if (!played) {
         return NextResponse.json({
           ok: true,

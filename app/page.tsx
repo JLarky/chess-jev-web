@@ -305,7 +305,7 @@ export default function Page() {
             <button
               className={mode === "chaos" ? "active" : ""}
               onClick={() => setMode("chaos")}
-              title="Jev shortlists 3 pieces and 4 chaotic squares each, ranks all 12 ideas, and plays the first legal one"
+              title="Jev shortlists 3 pieces and their 4 wildest reachable squares each, ranks all the ideas, and plays its favorite"
             >
               Chaos
             </button>
@@ -454,8 +454,8 @@ export default function Page() {
       <p className="note">
         Jev is a judgment model, not a chess engine. In legal-only mode it
         picks from real candidate moves. In chaos mode Jev shortlists 3 pieces
-        and 4 chaotic destinations each, ranks all 12 ideas, and plays the
-        first legal one. Either way, expect Levy-would-roast-it chess.
+        and their 4 wildest reachable squares each, ranks all the ideas, and
+        plays its favorite. Either way, expect Levy-would-roast-it chess.
       </p>
     </div>
   );
