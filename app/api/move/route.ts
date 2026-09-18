@@ -65,8 +65,9 @@ export async function POST(req: Request) {
       // Chaos, redesigned: Jev shortlists its top 3 pieces, then its top 4
       // reachable destinations for each piece (a rook gets its rank and
       // file, a knight its jumps, never its own square), then ranks all
-      // the ideas and plays its favorite. Every candidate is a legal move,
-      // so turns are effectively never forfeited.
+      // the ideas and plays its favorite. Every candidate is a legal move.
+      // If no legal move exists at all, the API says so and the UI lets
+      // the human play Jev's move. Turns are never forfeited.
       interface PieceInfo {
         square: string;
         type: string;

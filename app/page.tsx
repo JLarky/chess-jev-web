@@ -41,13 +41,6 @@ const GLYPHS: Record<string, string> = {
 
 const FILES = ["a", "b", "c", "d", "e", "f", "g", "h"];
 
-// Chaos mode: Jev forfeits the turn, so flip the side to move in the FEN.
-function flipTurn(fen: string): string {
-  const parts = fen.split(" ");
-  parts[1] = parts[1] === "w" ? "b" : "w";
-  return parts.join(" ");
-}
-
 // Chaos confidences can be tiny but nonzero; "0%" looks broken.
 function fmtConf(c: number): string {
   if (c > 0 && c < 0.005) return "<1%";
@@ -66,7 +59,7 @@ export default function Page() {
   const [history, setHistory] = useState<string[]>([]);
   const [jevInfo, setJevInfo] = useState<string | null>(null);
   const [roast, setRoast] = useState<string | null>(null);
-  const [illegalCount, setIllegalCount] = useState(0);
+  const [jevStuck, setJevStuck] = useState(false);
   const [thinking, setThinking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [chaosOptions, setChaosOptions] = useState<ChaosOption[] | null>(null);
@@ -119,7 +112,7 @@ export default function Page() {
     setSelected(null);
     setJevInfo(null);
     setRoast(null);
-    setIllegalCount(0);
+    setJevStuck(false);
     setError(null);
     setThinking(false);
     setChaosOptions(null);
@@ -171,7 +164,10 @@ export default function Page() {
   };
 
   const onSquare = (sq: Square) => {
-    if (thinking || gameOver || turn !== humanColor) return;
+    if (thinking || gameOver) return;
+    // Normally only your own pieces; when Jev is stuck you move its pieces.
+    const movableColor = jevStuck ? turn : humanColor;
+    if (!jevStuck && turn !== humanColor) return;
     if (selected && targets.has(sq)) {
       try {
         const c = new Chess(fen);
@@ -182,13 +178,17 @@ export default function Page() {
         setSelected(null);
         setRoast(null);
         setError(null);
+        if (jevStuck) {
+          setJevStuck(false);
+          setJevInfo(`You played ${move.san} for Jev.`);
+        }
       } catch {
         setSelected(null);
       }
       return;
     }
     const piece = chess.get(sq);
-    if (piece && piece.color === humanColor) {
+    if (piece && piece.color === movableColor) {
       setSelected(selected === sq ? null : sq);
     } else {
       setSelected(null);
@@ -213,13 +213,12 @@ export default function Page() {
         if (data.mode === "chaos") {
           setChaosOptions(data.options ?? null);
           if (!data.legal) {
+            // Jev found no legal move: hand its turn to the human.
+            setJevStuck(true);
             setRoast(
-              "Jev fumbled all 12 chaotic ideas, every single one illegal! " +
-                "Turn forfeited. Your move."
+              "Jev couldn't find a single legal move. You play its move."
             );
-            setIllegalCount((c) => c + 1);
             setJevInfo(null);
-            setFen(flipTurn(fen));
           } else {
             const c = new Chess(fen);
             const move = c.move(data.move.san);
@@ -242,7 +241,7 @@ export default function Page() {
           setJevInfo(
             `Jev played ${move.san} (confidence ${fmtConf(
               data.confidence ?? 0
-            )}%)`
+            )})`
           );
           setRoast(null);
         }
@@ -263,6 +262,10 @@ export default function Page() {
     ? gameOver
     : thinking
     ? "Jev is thinking..."
+    : jevStuck
+    ? `Jev is stuck! Play ${turn === "w" ? "White" : "Black"}'s move for it${
+        chess.inCheck() ? ", check!" : ""
+      }`
     : turn === humanColor
     ? `Your move (${humanColor === "w" ? "White" : "Black"})${chess.inCheck() ? ", check!" : ""}`
     : `Jev to move (${turn === "w" ? "White" : "Black"})`;
@@ -297,14 +300,22 @@ export default function Page() {
           <div className="seg">
             <button
               className={mode === "strict" ? "active" : ""}
-              onClick={() => setMode("strict")}
+              onClick={() => {
+                setMode("strict");
+                setJevStuck(false);
+                setRoast(null);
+              }}
               title="Jev only picks from legal moves"
             >
               Legal only
             </button>
             <button
               className={mode === "chaos" ? "active" : ""}
-              onClick={() => setMode("chaos")}
+              onClick={() => {
+                setMode("chaos");
+                setJevStuck(false);
+                setRoast(null);
+              }}
               title="Jev shortlists 3 pieces and their 4 wildest reachable squares each, ranks all the ideas, and plays its favorite"
             >
               Chaos
@@ -370,11 +381,6 @@ export default function Page() {
             </div>
           )}
           {roast && <div className="roast">{roast}</div>}
-          {illegalCount > 0 && (
-            <div className="jev-line">
-              Illegal attempts by Jev: {illegalCount}
-            </div>
-          )}
           {error && <div className="error">Error: {error}</div>}
           <div className="moves" aria-live="off">
             {history.map((san, i) => (
