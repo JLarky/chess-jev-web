@@ -247,7 +247,13 @@ export default function Page() {
           <div className="status">
             <b>{status}</b>
           </div>
-          {jevInfo && <div className="jev-line">{jevInfo}</div>}
+          {jevInfo ? (
+            <div className="jev-line">{jevInfo}</div>
+          ) : (
+            <div className="jev-line" aria-hidden="true">
+              {"\u00a0"}
+            </div>
+          )}
           {roast && <div className="roast">{roast}</div>}
           {illegalCount > 0 && (
             <div className="jev-line">
@@ -255,16 +261,14 @@ export default function Page() {
             </div>
           )}
           {error && <div className="error">Error: {error}</div>}
-          {history.length > 0 && (
-            <div className="moves">
-              {history.map((san, i) => (
-                <span key={i}>
-                  {i % 2 === 0 && <b>{i / 2 + 1}. </b>}
-                  {san}{" "}
-                </span>
-              ))}
-            </div>
-          )}
+          <div className="moves" aria-live="off">
+            {history.map((san, i) => (
+              <span key={i}>
+                {i % 2 === 0 && <b>{i / 2 + 1}. </b>}
+                {san}{" "}
+              </span>
+            ))}
+          </div>
         </div>
       </div>
 
