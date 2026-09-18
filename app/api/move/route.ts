@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { Chess, Square } from "chess.js";
+import { isAuthed } from "../../lib/auth";
 
 const BASE_URL = process.env.TYPESAFE_BASE_URL ?? "https://api.typesafe.ai";
 const MODEL = "jev-latest";
@@ -57,6 +58,18 @@ const uciOf = (m: { from: string; to: string; promotion?: string }) =>
 
 export async function POST(req: Request) {
   try {
+    // Password gate: no TypeSafe spend without a valid auth cookie.
+    // JEV_MOCK=1 (local UI testing) bypasses the gate; an unset
+    // JEV_PASSWORD disables it entirely.
+    if (
+      process.env.JEV_MOCK !== "1" &&
+      !isAuthed(req.headers.get("cookie"), process.env.JEV_PASSWORD)
+    ) {
+      return NextResponse.json(
+        { ok: false, error: "unauthorized: enter the password to play" },
+        { status: 401 }
+      );
+    }
     const { fen, mode } = await req.json();
     const chess = new Chess(fen);
     const colorName = chess.turn() === "w" ? "white" : "black";

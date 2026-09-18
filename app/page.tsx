@@ -67,6 +67,10 @@ export default function Page() {
   const [importText, setImportText] = useState("");
   const [importError, setImportError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [needPassword, setNeedPassword] = useState(false);
+  const [pwInput, setPwInput] = useState("");
+  const [pwError, setPwError] = useState<string | null>(null);
+  const [authTick, setAuthTick] = useState(0);
 
   const chess = useMemo(() => new Chess(fen), [fen]);
   const turn = chess.turn();
@@ -208,6 +212,11 @@ export default function Page() {
           body: JSON.stringify({ fen, mode }),
         });
         const data = await res.json();
+        if (res.status === 401) {
+          // Password gate: stop and ask the human for the password.
+          if (!cancelled) setNeedPassword(true);
+          return;
+        }
         if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
         if (cancelled) return;
         if (data.mode === "chaos") {
@@ -255,7 +264,26 @@ export default function Page() {
     return () => {
       cancelled = true;
     };
-  }, [fen, mode, humanColor, gameOver, turn]);
+  }, [fen, mode, humanColor, gameOver, turn, authTick]);
+
+  const submitPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPwError(null);
+    try {
+      const res = await fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: pwInput }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || "login failed");
+      setPwInput("");
+      setNeedPassword(false);
+      setAuthTick((t) => t + 1); // retry Jev's move
+    } catch (err) {
+      setPwError(err instanceof Error ? err.message : "login failed");
+    }
+  };
 
   const board = chess.board();
   const status = gameOver
@@ -456,6 +484,33 @@ export default function Page() {
           </details>
         </div>
       </div>
+
+      {needPassword && (
+        <div
+          className="pw-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Password required"
+        >
+          <form className="pw-box" onSubmit={submitPassword}>
+            <h2>Password required</h2>
+            <p>Enter the password to let Jev move. It keeps strangers from spending the AI budget.</p>
+            <input
+              type="password"
+              className="pw-input"
+              value={pwInput}
+              onChange={(e) => setPwInput(e.target.value)}
+              placeholder="Password"
+              autoFocus
+              aria-label="Password"
+            />
+            <button type="submit" className="btn">
+              Unlock
+            </button>
+            {pwError && <div className="error">Error: {pwError}</div>}
+          </form>
+        </div>
+      )}
 
       <p className="note">
         Jev is a judgment model, not a chess engine. In legal-only mode it
